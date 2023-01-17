@@ -8,9 +8,12 @@
 name: OpenWrt-CI
 
 on:
-  schedule:
-    - cron: 0 20 * * *
-  release:
+ push:
+   branches: 
+     - master
+     #schedule:
+     #  - cron: 50 7 * * *
+ release:
     types: [published]
     
 permissions:
@@ -35,7 +38,8 @@ jobs:
         uses: actions/checkout@v2
         with:
           ref: master
-
+      - name: Setup Debug Session
+        uses: csexton/debugger-action@maste
       - name: Space cleanup
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -44,7 +48,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* adoptopenjdk* mysql* php* mongodb* dotnet* moby* snapd* || true
           sudo -E apt-get update
-          sudo -E apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler antlr3 gperf swig
+          sudo -E apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 unzip zlib1g-dev lib32gcc-s1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler antlr3 gperf swig
           sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
 
@@ -52,13 +56,88 @@ jobs:
 
       - name: Update feeds
         run: |
-          sed -i 's/#src-git helloworld/src-git helloworld/g' ./feeds.conf.default
+          echo 'src-git helloworld https://github.com/fw876/helloworld' >> ./feeds.conf.default
+          sed -i 's/\"#src-git\"/\"src-git\"/g' ./feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: Generate configuration file
-        run: make defconfig
-
+        run: |
+          rm -f ./.config*
+          touch ./.config
+          cat >> .config <<EOF
+          #
+          # ========================固件定制部分========================
+          #
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_mt7622=y
+          CONFIG_TARGET_mediatek_mt7622_DEVICE_ruijie_rg-ew3200gx-pro=y
+          # CONFIG_DOWNLOAD_CHECK_CERTIFICATE is not set
+          CONFIG_IB=y
+          CONFIG_IB_STANDALONE=y
+          # CONFIG_JSON_OVERVIEW_IMAGE_INFO is not set
+          CONFIG_PACKAGE_adbyby=y
+          CONFIG_PACKAGE_haproxy=y
+          CONFIG_PACKAGE_libatomic=y
+          CONFIG_PACKAGE_libltdl=y
+          CONFIG_PACKAGE_liblua5.3=y
+          CONFIG_PACKAGE_libminiupnpc=y
+          CONFIG_PACKAGE_libnatpmp=y
+          CONFIG_PACKAGE_libncurses=y
+          CONFIG_PACKAGE_libreadline=y
+          CONFIG_PACKAGE_libstdcpp=y
+          CONFIG_PACKAGE_luci-app-adbyby-plus=y
+          CONFIG_PACKAGE_luci-app-argon-config=y
+          CONFIG_PACKAGE_luci-app-haproxy-tcp=y
+          # CONFIG_PACKAGE_luci-app-rclone_INCLUDE_rclone-ng is not set
+          # CONFIG_PACKAGE_luci-app-rclone_INCLUDE_rclone-webui is not set
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NONE_V2RAY=y
+          # CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Simple_Obfs is not set
+          # CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray is not set
+          CONFIG_PACKAGE_luci-app-uhttpd=y
+          # CONFIG_PACKAGE_luci-app-unblockmusic_INCLUDE_UnblockNeteaseMusic_Go is not set
+          # CONFIG_PACKAGE_luci-app-vlmcsd is not set
+          CONFIG_PACKAGE_luci-app-zerotier=y
+          CONFIG_PACKAGE_luci-compat=y
+          CONFIG_PACKAGE_luci-i18n-adbyby-plus-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-haproxy-tcp-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-uhttpd-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-zerotier-zh-cn=y
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-theme-material=y
+          # CONFIG_PACKAGE_openwrt-keyring is not set
+          # CONFIG_PACKAGE_simple-obfs-client is not set
+          CONFIG_PACKAGE_terminfo=y
+          # CONFIG_PACKAGE_usign is not set
+          # CONFIG_PACKAGE_vlmcsd is not set
+          # CONFIG_PACKAGE_xray-core is not set
+          CONFIG_PACKAGE_zerotier=y
+          # CONFIG_PKG_CHECK_FORMAT_SECURITY is not set
+          CONFIG_SDK=y
+          # CONFIG_SECCOMP is not set
+          # CONFIG_SIGNATURE_CHECK is not set
+          # CONFIG_SIGNED_PACKAGES is not set
+          CONFIG_TARGET_EXT4_BLOCKSIZE=4096
+          CONFIG_TARGET_EXT4_BLOCKSIZE_4K=y
+          CONFIG_TARGET_EXT4_RESERVED_PCT=0
+          CONFIG_TARGET_IMAGES_GZIP=y
+          CONFIG_TARGET_ROOTFS_EXT4FS=y
+          #
+          # ========================固件定制部分结束========================
+          #
+          EOF
+          sed -i 's/^[ \t]*//g' ./.config
+          make defconfig
+          # 网络配置信息，将从 zzz-default-settings 文件的第2行开始添加
+          sed -i "2i # network config" ./package/lean/default-settings/files/zzz-default-settings
+          # 默认 IP 地址，旁路由时不会和主路由的 192.168.1.1 冲突
+          sed -i "3i uci set network.lan.ipaddr='192.168.1.1'" ./package/lean/default-settings/files/zzz-default-settings
+          sed -i "4i uci set network.lan.proto='static'" ./package/lean/default-settings/files/zzz-default-settings # 静态 IP
+          sed -i "5i uci set network.lan.type='bridge'" ./package/lean/default-settings/files/zzz-default-settings  # 接口类型：桥接
+          sed -i "7i uci set network.lan.netmask='255.255.255.0'" ./package/lean/default-settings/files/zzz-default-settings    # 子网掩码
+          sed -i "10i uci commit network\n" ./package/lean/default-settings/files/zzz-default-settings
+          
       - name: Make download
         run: |
           make download -j8
@@ -66,7 +145,7 @@ jobs:
 
       - name: Compile firmware
         run: |
-          make -j$(nproc) || make -j1 V=s
+          make -j$(nproc) || make -j8 package/upx/{clean,compile} V=s
           echo "======================="
           echo "Space usage:"
           echo "======================="
