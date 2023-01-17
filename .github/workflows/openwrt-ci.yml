@@ -37,7 +37,7 @@ jobs:
         with:
           ref: master
       - name: Setup Debug Session
-        uses: csexton/debugger-action@maste
+        uses: csexton/debugger-action@master
       - name: Space cleanup
         env:
           DEBIAN_FRONTEND: noninteractive
